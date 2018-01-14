@@ -1,0 +1,70 @@
+public Authentication authenticate(Authentication authentication)throws AuthenticationException{
+    Assert.isInstanceof(UsernamePasswordAuthenticationToken.class,authentication,
+        messages.getMessage("AbstractUserDetailsAuthenticationProvider.onlySupports",
+        "Only UsernamePasswordAuthenticationToken is supported"));
+    // 这里取得用户输入的用户名
+        String username = (authentication.getPrincipal() == null)? "NONE_PROVIDED" : authentication.getName();
+        /*如果配置了缓存，从缓存中获取以前存入的用户验证信息，也就是UserDetail对象，这是为用户验证提供的用户信息缓存。有了这个缓存，
+        当再次需要验证时，就不用每次都用到数据库中去获取用户的数据了
+         */
+        boolean cacheWasUsed = ture;
+        UserDetails user = this.userCache.getUserFromCache(username);
+        /*在缓存中如果没有取到用户数据，那就设置标志位，根据这个标志位把这次获取到的服务器端用户信息存入缓存中*/
+        if (user == null){
+            cacheWasUsed false;
+            try{//这里是调用UserDetailService到到用户数据库中获取用户信息的地方
+        user = retrieveUser(username, (UsernamePasswordAuthenticationToken)authentication);
+            }catch (usernameNotFoundException notFound){
+                if (hideUserNotFoundExceptions) {
+                    throw new BadCredentialsException(messages.getMessage(
+                            "AbstractUserDetailsAuthenticationProvider.badCredentials","Bad credentials"));
+                }else {
+                    throw notFound;
+                }
+            }
+            Assert.notNull(user,"retrieveUser returned null- a violation of the interface contract");
+        }
+        //得到用户信息以后，判断当前用户的状态，比如账户是否被锁定、用户是否有效、账户是否过期等
+        if (!user.isAccountNotNonLocked()){
+            throw new LockedException(messages.getMessage(
+                    "AbstractUserDetailsAuthenticationProvider.locked","User account is locked"));
+        }
+        if (!user.isEnabled()){
+            throw new DisableException(messages.getMessage(
+                    "AbstractUserDetailsAuthenticationProvider.disabled","user is disabled"));
+        }
+        if (!user.isAccountNonExpired()){
+            throw new AccountException(messages.getMessage(
+                    "AbstractUserDetailsAuthenticationProvider.expired","User account has expired"));
+        }
+        /* 这里是验证过程，在retrieveUser中保存着从数据库中得到的用户信息，
+        在additionalAuthenticationChecks方法实现中完成用户输入信息和服务器端的用户信息的对比工作*/
+        /* 如果验证通过，那么构造一个Authentication对象，
+        这个Authentication对象会被以后的授权器使用，如果验证不通过，直接抛出异常，结束验证*/
+        try{
+            additionalAuthenticationChecks(user,(UsernamePasswordAuthenticationToken)authentication);
+        }catch (AuthenticationException exception){
+            if(cacheWasUserd){
+                //使用最新的数据，不一定是从缓存中获得
+            cacheWasUsed = false;
+            user = retrieveUser(username,(UsernamePasswordAuthenticationToken) authentication);
+        }else{
+                throw exception;
+        }
+        }
+        if(!user.isCredentialsNonExpired()){
+            throw new CredentialsExpriedException(message.getMessage(
+                    "AbstractUserDetailsAuthenticationProvider.credentialsNonExpired","User credentials have expired"
+        ));
+        }
+        //g根据前面设置的缓存标志，决定是否把当前的用户数据存入缓存，以供下次验证使用
+        if (!cacheWesUsed){
+            this.userCache.putUserInCache(user);
+        }
+        Object principalToReturn = user;
+        if (forcePrincipalAsString){
+            pricipalToReturn = user.getUsername();
+        }
+        //最后返回Authentication对象，这个对象记录了验证结果
+        return createSuccessAuthentication(principalToReturn, authentication,user);
+}
