@@ -1,0 +1,51 @@
+public int vote(Authentication authentication,Object object,ConfigAttributeDefinition config){
+  int result = ACCESS_ABSTAIN;
+  //这里取得资源的安全配置
+  Iterator iter =config.getConfigAttributes();
+  while(iter.hasNext()){
+    configAttribute attribute = (ConfigAttribute) iter.next();
+  //这个support判断安全配置属性是否存在，并且是否以ROLE为前缀进行角色配置
+    if (this.support(attribute)){
+      result = ACCESS_DENIED;
+  //这里对资源配置的安全级别进行判断，也就是匹配ROLE为前缀的角色配置
+  //遍历每个配置属性，如果其中一个匹配该主体持有的GrantedAuthority，则访问被允许
+        for (int i = 0;i < authentication.getAuthorities().length;i++){
+          if (attribute.getAttribute().equals(authentication.getAuthorities()[i].getAuthority())){
+          return ACCESS_GRANTED;
+          }
+        } 
+     }
+   }
+   return result;
+}
+____________________________________
+public void decide(Authentication authentication, Object object,ConfigAttributeDefinition config)
+  throws AccessDeniedException{
+  //取得配置投票器的迭代器
+  Iterator iter = this.getDecisionVoters().iterator();
+  int deny = 0;
+  while(iter.hasNext()){
+    //取得当前投票器的投票结果
+    AccessDecisionVoter voter = (AccessDecisionVoter) iter.next();
+    int result = voter.vote(authentication,object,config);
+    //对投票结果进行处理，如果遇到ACCESS_GRANT的结果，授权直接通过
+    //否则，累计ACCESSS_DENIED的投票数
+     switch (result){
+     case AccessDecisionVoter.ACCESS_GRANT:
+      return;
+     case AccessDecisionVoter.ACCESS_DENIED:
+      deny++;
+      break;
+     default:
+      break;
+     }
+   }
+   //如果有反对票，那么拒绝授权
+    if (deny > 0 ) {
+      throws new AccessDeniedException(message.getMessage(
+        "AbestractAccessDecisionMassage.accessDenied","Access is denied"));
+    }
+    /*这里对弃权票进行处理，对全是弃权票进行处理，默认是不通过，这种情况是由allowIfAllAbstainDecisions变量来控制的*/
+    checkAllowIfAllAbstainDecisions();
+}
+  
